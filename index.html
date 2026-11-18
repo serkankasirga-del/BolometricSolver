@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bolometric Thermometry Solver</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <h1>Bolometric Thermometry Solver</h1>
+    <span class="sub">Analytical Fourier / non-Fourier heat transport · optical (OBT) &amp; mechanical (MBT) heating</span>
+  </div>
+  <div class="actions">
+    <button id="btnExample" title="Load the example device">Example</button>
+    <button id="btnClear" title="Start from an empty canvas">Clear</button>
+    <button id="btnSave" title="Download project as JSON">Save</button>
+    <label class="btn" title="Load a project JSON">Load<input id="fileLoad" type="file" accept=".json,application/json" hidden></label>
+    <button id="btnTheory">Theory</button>
+    <button id="btnTheme" title="Toggle light/dark">Theme</button>
+  </div>
+</header>
+
+<main class="layout">
+  <!-- ======================= Geometry editor ======================= -->
+  <section class="editor-pane">
+    <div class="toolbar" id="toolbar">
+      <button data-tool="select" class="active" title="Select / move / edit vertices (drag empty space to pan, wheel to zoom)">Select</button>
+      <span class="sep"></span>
+      <button data-tool="crystal-poly" title="Crystal boundary: click vertices, double-click or Enter to close">Crystal ⬠</button>
+      <button data-tool="crystal-rect" title="Crystal boundary as a rectangle (drag)">Crystal ▭</button>
+      <button data-tool="contact-rect" title="Electrical contact as rectangle (drag)">Contact ▭</button>
+      <button data-tool="contact-poly" title="Electrical contact as polygon">Contact ⬠</button>
+      <button data-tool="hole" title="Substrate hole: drag from centre to radius">Hole ◯</button>
+      <button data-tool="source" title="Heat source position (laser spot / AFM tip)">Heat source ⊕</button>
+      <button data-tool="scan" title="Line-scan path for δR vs position">Scan line ↗</button>
+      <span class="sep"></span>
+      <button id="btnDelete" title="Delete selected (Del)">Delete</button>
+      <button id="btnFit" title="Zoom to fit">Fit view</button>
+      <label class="chk" title="Snap to 0.1 µm grid (hold Alt to disable)"><input type="checkbox" id="snap" checked> Snap</label>
+      <label class="chk">Overlay
+        <select id="overlay">
+          <option value="temp">Temperature rise</option>
+          <option value="current">Current density</option>
+          <option value="sens">Bolometric sensitivity</option>
+          <option value="none">None</option>
+        </select>
+      </label>
+    </div>
+    <div class="canvas-wrap">
+      <canvas id="canvas"></canvas>
+      <div class="cursor-readout" id="cursorReadout"></div>
+      <div class="hint" id="hint"></div>
+    </div>
+    <div class="geom-panel">
+      <div class="geom-row">
+        <div>
+          <h3>Contacts</h3>
+          <table class="contacts" id="contactsTable">
+            <thead><tr><th>Name</th><th>Role</th><th>R<sub>c</sub> (Ω)</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <p class="small muted">Roles: I+ / I− carry the bias current. Add V+ / V− for a four-terminal (constant-current) measurement; contact resistance then drops out. Unassigned pads still short the flake.</p>
+        </div>
+        <div>
+          <h3>Hole &amp; source</h3>
+          <div class="grid2">
+            <label>Hole x (µm)<input type="number" step="any" data-geom="hole.cx"></label>
+            <label>Hole y (µm)<input type="number" step="any" data-geom="hole.cy"></label>
+            <label>Hole radius a (µm)<input type="number" step="any" min="0" data-geom="hole.a"></label>
+            <label>&nbsp;<button id="btnCenterSource" type="button">Source → hole centre</button></label>
+            <label>Source x (µm)<input type="number" step="any" data-geom="source.0"></label>
+            <label>Source y (µm)<input type="number" step="any" data-geom="source.1"></label>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= Parameters ======================= -->
+  <section class="side-pane">
+    <details open>
+      <summary>Material</summary>
+      <div class="grid2">
+        <label class="span2">Preset
+          <select data-key="preset" id="preset"></select>
+        </label>
+        <p class="span2 small muted" id="presetNote"></p>
+        <label>Thickness t (nm)<input type="number" step="any" min="0" data-key="t_nm"></label>
+        <label>T<sub>0</sub> measurement (K)<input type="number" step="any" min="0" data-key="T0"></label>
+        <label>κ suspended (W/m·K)<input type="number" step="any" min="0" data-key="kappa"></label>
+        <label>κ′ supported (W/m·K)<input type="number" step="any" min="0" data-key="kappaSup"></label>
+        <label class="chk span2"><input type="checkbox" data-key="tieKappa"> κ′ = κ (as in the 2D Mater. analysis)</label>
+        <label class="span2">G, crystal–substrate boundary conductance (W/m²·K)<input type="text" data-key="G" data-num></label>
+      </div>
+    </details>
+
+    <details open>
+      <summary>Heat transport model</summary>
+      <div class="grid2">
+        <label class="span2">Model
+          <select data-key="model">
+            <option value="fourier">Fourier (diffusive)</option>
+            <option value="gk">Non-Fourier: Guyer–Krumhansl (hydrodynamic)</option>
+            <option value="ballistic">Non-Fourier: ballistic–diffusive κ suppression</option>
+          </select>
+        </label>
+        <label class="span2" data-show="model!=fourier">Phonon mean free path l (nm)<input type="number" step="any" min="0" data-key="l_nm"></label>
+        <p class="span2 small muted" id="modelNote"></p>
+      </div>
+    </details>
+
+    <details open>
+      <summary>Heat delivery</summary>
+      <div class="seg" role="radiogroup">
+        <label><input type="radio" name="heatMethod" value="optical" data-key="heatMethod"> Optical (laser)</label>
+        <label><input type="radio" name="heatMethod" value="mechanical" data-key="heatMethod"> Mechanical (AFM tip)</label>
+      </div>
+      <div class="grid2" data-show="heatMethod=optical">
+        <label>Laser power P (µW)<input type="number" step="any" min="0" data-key="P_uW"></label>
+        <label>Absorbance A (0–1)<input type="number" step="any" min="0" max="1" data-key="absorbance"></label>
+        <label>Spot size (nm)<input type="number" step="any" min="0" data-key="spot_nm"></label>
+        <label>Spot size given as
+          <select data-key="spotKind">
+            <option value="r0">1/e radius r₀</option>
+            <option value="w">1/e² radius w</option>
+            <option value="fwhm">FWHM</option>
+          </select>
+        </label>
+        <label>Wavelength (nm)<input type="number" step="any" min="0" data-key="wavelength_nm"></label>
+        <p class="span2 small muted">Absorbed power Q = A·P with Gaussian volumetric heating ∝ exp(−r²/r₀²). Heating by light reflected from the hole bottom is ignored.</p>
+      </div>
+      <div class="grid2" data-show="heatMethod=mechanical">
+        <label>Tip thermal radius r₀ (nm)<input type="number" step="any" min="0" data-key="tip_r0_nm"></label>
+        <label class="span2">Heat-transfer specification
+          <select data-key="mechMode">
+            <option value="contactTemp">Contact temperature rise δT* = T*_AFM − T_amb</option>
+            <option value="power">Delivered power Q (constant power)</option>
+            <option value="conductance">Tip temperature + tip–sample conductance</option>
+          </select>
+        </label>
+        <label data-show="mechMode=contactTemp">δT* at contact (K)<input type="number" step="any" data-key="dTc"></label>
+        <label data-show="mechMode=power">Q tip→sample (nW)<input type="number" step="any" data-key="Q_nW"></label>
+        <label data-show="mechMode=conductance">T<sub>tip</sub> (K)<input type="number" step="any" data-key="Ttip"></label>
+        <label data-show="mechMode=conductance">G<sub>TS</sub> (W/K)<input type="text" data-key="Gts" data-num></label>
+        <p class="span2 small muted">Negative δT*, Q or T<sub>tip</sub> &lt; T<sub>0</sub> models a cold tip extracting heat.</p>
+      </div>
+    </details>
+
+    <details open>
+      <summary>Electrical</summary>
+      <div class="grid2">
+        <label class="span2">ρ(T) model
+          <select data-key="rModel">
+            <option value="tcr">Temperature coefficient of resistance (TCR)</option>
+            <option value="rt">Measured R–T data</option>
+            <option value="activation">Thermally activated (semiconductor)</option>
+          </select>
+        </label>
+        <label data-show="rModel=tcr" class="span2">TCR α at T<sub>0</sub> (K⁻¹)<input type="text" data-key="alpha" data-num></label>
+        <label data-show="rModel=activation" class="span2">Activation energy E<sub>A</sub> (eV)<input type="number" step="any" data-key="EA"></label>
+        <div data-show="rModel=rt" class="span2">
+          <label>R–T data: two columns T (K), R (Ω)
+            <textarea data-key="rtText" rows="6" spellcheck="false" placeholder="# T(K)  R(Ohm)&#10;280  98.1&#10;290  100.6&#10;300  103.1"></textarea>
+          </label>
+          <div class="row">
+            <label class="btn small">Load file<input type="file" id="rtFile" accept=".txt,.csv,.dat,.tsv" hidden></label>
+            <label class="chk"><input type="checkbox" data-key="rtIncludesRc"> data is two-terminal: subtract R<sub>c</sub>(I+) + R<sub>c</sub>(I−)</label>
+          </div>
+          <p class="small muted" id="rtInfo"></p>
+        </div>
+        <label class="span2">Sample resistance from
+          <select data-key="rhoKind">
+            <option value="resistivity">Resistivity ρ₀ at T₀</option>
+            <option value="resistance">Measured sample resistance at T₀ (contacts excluded)</option>
+            <option value="rtdata">R(T₀) from the R–T data</option>
+          </select>
+        </label>
+        <label data-show="rhoKind=resistivity">ρ₀ (µΩ·cm)<input type="text" data-key="rho_uOhmcm" data-num></label>
+        <label data-show="rhoKind=resistance">R<sub>sample</sub> (Ω)<input type="text" data-key="Rsample" data-num></label>
+        <label>Bias mode
+          <select data-key="biasMode">
+            <option value="cv">Constant voltage V_B (current read-out)</option>
+            <option value="cc">Constant current I (voltage read-out)</option>
+          </select>
+        </label>
+        <label data-show="biasMode=cv">Bias V<sub>B</sub> (mV)<input type="number" step="any" data-key="V_mV"></label>
+        <label data-show="biasMode=cc">Bias current I (µA)<input type="number" step="any" data-key="I_uA"></label>
+        <label>Lock-in ENBW Δf (Hz)<input type="number" step="any" min="0" data-key="bandwidth"></label>
+        <label>Grid cells (long side)<input type="number" step="1" min="40" max="400" data-key="resolution"></label>
+      </div>
+    </details>
+
+    <details open>
+      <summary>Measurement → fit κ</summary>
+      <div class="grid2">
+        <label>Measured quantity
+          <select data-key="measKind">
+            <option value="dR">δR_M (mΩ)</option>
+            <option value="photocurrent">Bolometric current I_PC (nA), const. V</option>
+            <option value="voltage">Bolometric voltage V_bolo (µV), const. I</option>
+          </select>
+        </label>
+        <label>Value<input type="text" data-key="measValue" data-num></label>
+        <label>± uncertainty<input type="text" data-key="measSigma" data-num></label>
+        <label>&nbsp;<button id="btnFitKappa" class="primary" type="button">Fit κ</button></label>
+      </div>
+      <div id="fitOut" class="fit-out"></div>
+    </details>
+  </section>
+
+  <!-- ======================= Results ======================= -->
+  <section class="results-pane">
+    <div class="res-head">
+      <h2>Results</h2>
+      <span id="status" class="status"></span>
+      <label class="chk"><input type="checkbox" id="autoRun" checked> auto</label>
+      <button id="btnRun" class="primary">Compute</button>
+    </div>
+    <div id="warnings"></div>
+    <table class="results" id="resultsTable"></table>
+    <div class="plots">
+      <div class="plot-card">
+        <div class="plot-head"><span>Temperature profile through the source</span>
+          <select id="profileDir"><option value="x">along x</option><option value="y">along y</option></select></div>
+        <canvas id="plotProfile"></canvas>
+      </div>
+      <div class="plot-card">
+        <div class="plot-head"><span>δR vs κ</span><button id="btnSweepK" class="small">Sweep κ</button></div>
+        <canvas id="plotKappa"></canvas>
+      </div>
+      <div class="plot-card">
+        <div class="plot-head"><span>Line scan: δR vs source position</span><button id="btnScan" class="small">Run scan</button></div>
+        <canvas id="plotScan"></canvas>
+      </div>
+      <div class="plot-card">
+        <div class="plot-head"><span>Non-Fourier: δR vs mean free path</span><button id="btnSweepL" class="small">Sweep l</button></div>
+        <canvas id="plotMFP"></canvas>
+      </div>
+    </div>
+  </section>
+</main>
+
+<dialog id="theory">
+  <form method="dialog"><button class="close" aria-label="Close">✕</button></form>
+  <div id="theoryBody"></div>
+</dialog>
+
+<script src="js/math/special.js"></script>
+<script src="js/physics/thermal.js"></script>
+<script src="js/physics/resistivity.js"></script>
+<script src="js/physics/electrical.js"></script>
+<script src="js/physics/bolometer.js"></script>
+<script src="js/physics/materials.js"></script>
+<script src="js/ui/plot.js"></script>
+<script src="js/ui/editor.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
