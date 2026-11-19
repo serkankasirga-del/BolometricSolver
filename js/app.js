@@ -643,7 +643,8 @@ Noise floor: Johnson √(4k_BTRΔf) and shot √(2qIΔf).</p>
 “Thermal conductivity measurements in nanosheets via bolometric effect”, <i>2D Materials</i> 7, 035003 (2020), arXiv:2001.00368.<br>
 T. S. Kasırga, B. Köker, “An extensive thermal conductivity measurement method based on atomic force microscopy”,
 <i>Int. J. Heat Mass Transfer</i> (2025), arXiv:2501.18384.</p>
-<p class="muted">Full derivation: docs/THEORY.md in the repository.</p>`;
+<p>Full derivations, figures and validation: <a href="docs/Bolometric_Solver_Theory.pdf" target="_blank" rel="noopener">technical note (PDF)</a> · docs/THEORY.md.</p>
+<p class="muted">Bolometric Thermometry Solver by Talip Serkan Kasırga · released under the MIT License.</p>`;
 
   // ------------------------------------------------------------------ init
   bindForm();

@@ -1,5 +1,7 @@
 # Bolometric Thermometry Solver
 
+Author: **Talip Serkan Kasırga** · License: [MIT](LICENSE)
+
 An analytical solver with a drawing GUI for **bolometric thermal-conductivity measurements** on
 suspended thin crystals. Heat can be delivered **optically** (focused laser, OBT) or
 **mechanically** (heated AFM tip, MBT). Heat transport can be **Fourier** or **non-Fourier**
@@ -90,3 +92,7 @@ tests/physics.test.js   validation tests (node --test)
 ```
 
 Material presets are starting points; replace them with your sample's measured values.
+
+## License
+
+Released under the [MIT License](LICENSE). Copyright (c) 2026 Talip Serkan Kasırga.
