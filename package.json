@@ -2,7 +2,8 @@
   "name": "bolometric-solver",
   "version": "1.0.0",
   "description": "Analytical solver for optical and mechanical bolometric thermometry (Fourier and non-Fourier heat transport)",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "MIT",
+  "author": "Talip Serkan Kasırga",
   "private": true,
   "scripts": {
     "test": "node --test tests/*.test.js"
