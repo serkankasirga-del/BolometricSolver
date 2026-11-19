@@ -61,7 +61,7 @@ npm test
 * The drawn device is solved once for its cold current distribution.
 * δR then follows from the first-order reciprocity formula δR = ∫ δρ J·J′ dV / (I I′).
 
-See [`docs/THEORY.md`](docs/THEORY.md) for the equations, assumptions and validation.
+See [`docs/THEORY.md`](docs/THEORY.md) for the equations, assumptions and validation, and [`docs/Bolometric_Solver_Theory.pdf`](docs/Bolometric_Solver_Theory.pdf) for a typeset technical note with derivations, figures and validation results.
 
 ## Validation (in `tests/`)
 

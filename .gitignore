@@ -1,2 +1,7 @@
 node_modules/
 .DS_Store
+docs/pdf-source/node_modules/
+docs/pdf-source/data.json
+docs/pdf-source/gui.png
+docs/pdf-source/doc.html
+docs/pdf-source/package*.json

@@ -1,0 +1,233 @@
+<section class="cover">
+  <div class="kicker">Technical note · Bolometric Thermometry Solver</div>
+  <h1>Analytical modelling of optical and mechanical bolometric thermometry</h1>
+  <p class="subtitle">Theory, numerical implementation and validation of the solver for Fourier and non-Fourier heat transport in suspended thin crystals</p>
+  <p class="meta">Based on the methods of T. Serkan Kasırga and co-workers [1, 2] · Solver version 1.0 · {{DATE}}</p>
+  <div class="abstract">
+    <h4>Summary</h4>
+    <p>In bolometric thermometry a local heater (a focused laser for <em>optical bolometric thermometry</em>, OBT, or a heated AFM tip for <em>mechanical bolometric thermometry</em>, MBT) raises the temperature of a thin crystal that is suspended over a hole in the substrate. The temperature rise changes the electrical resistance of the contacted crystal by an amount δR. The thermal conductivity κ is the parameter that makes the predicted δR equal to the measured one.</p>
+    <p>This note sets out the model in the solver:</p>
+    <ul>
+      <li>an analytical, steady-state temperature field for Fourier, Guyer–Krumhansl and ballistic–diffusive transport;</li>
+      <li>exact treatment of a heat source at any position;</li>
+      <li>the reciprocity formula that turns that temperature field into δR for a device of arbitrary drawn shape with two or four terminals;</li>
+      <li>contact resistance, bias mode and intrinsic noise;</li>
+      <li>the κ fitting procedure.</li>
+    </ul>
+    <p>It also documents the validation tests and the model's assumptions.</p>
+  </div>
+  <div class="toc">
+    <h4>Contents</h4>
+    <ol>
+      <li>Measurement principle</li>
+      <li>Geometry and notation</li>
+      <li>Heat transport: analytical solution</li>
+      <li>Heat delivery: optical and mechanical</li>
+      <li>Temperature-dependent resistivity</li>
+      <li>From temperature field to δR</li>
+      <li>Read-out, contact resistance and noise</li>
+      <li>Extracting κ</li>
+      <li>Solver workflow and user interface</li>
+      <li>Worked example</li>
+      <li>Validation</li>
+      <li>Assumptions and limitations</li>
+    </ol>
+  </div>
+</section>
+
+<h2>1&nbsp;&nbsp;Measurement principle</h2>
+<p>Optical and mechanical bolometric thermometry both use the sample as its own thermometer. The resistivity of a metal, semiconductor or correlated material depends on temperature. A small, local rise in temperature therefore changes the total resistance of the electrically contacted flake, and a lock-in amplifier synchronised to the heater modulation can resolve that change down to the ppm level [1].</p>
+<p>Part of the flake is suspended over a hole in the substrate. Heat then has to travel through the crystal itself before it reaches the supported region, where it drains into the substrate through the boundary conductance G. The temperature profile, and with it δR, is therefore controlled by κ [1, 2].</p>
+<p>The two methods differ only in how heat is delivered:</p>
+<ul>
+  <li><b>OBT</b> [1]: a laser spot of a few hundred nanometres, chopped at about 2 kHz. The absorbed power is the incident power multiplied by the absorbance.</li>
+  <li><b>MBT</b> [2]: an AFM tip in intermittent contact, with an effective thermal radius of about 20 nm. It deposits (or extracts) heat at the tapping frequency. The heat flow is set either by the temperature at the contact point or by the tip–sample thermal conductance.</li>
+</ul>
+<p>The solver takes a geometry you draw, the material and measurement parameters, and either predicts δR together with the signal you would measure, or inverts a measured value to give κ.</p>
+{{FIG:schematic}}
+
+<h2>2&nbsp;&nbsp;Geometry and notation</h2>
+<p>The flake has thickness $t$ and lies in the $(x,y)$ plane. The substrate hole is a circle of radius $a$ centred at $(x_h,y_h)$. Polar coordinates $(r,\theta)$ are taken about the hole centre. The heat source sits at $(x_s,y_s)$, and $\rho$ is the distance from it. Metal contact pads lie under the flake, each with a role (I+, I−, V+, V−, or none) and a lumped contact resistance $R_c$. The ambient (measurement) temperature is $T_0$, and $\Delta T = T - T_0$.</p>
+<table class="nice">
+<thead><tr><th>Symbol</th><th>Meaning</th><th>GUI unit</th></tr></thead>
+<tbody>
+<tr><td>$\kappa,\ \kappa'$</td><td>In-plane thermal conductivity of the suspended and supported flake (κ′ = κ by default, as in [1])</td><td>W m<sup>−1</sup> K<sup>−1</sup></td></tr>
+<tr><td>$G$</td><td>Thermal boundary conductance between flake and substrate</td><td>W m<sup>−2</sup> K<sup>−1</sup></td></tr>
+<tr><td>$Q$</td><td>Power absorbed by, or delivered to, the flake</td><td>µW / nW</td></tr>
+<tr><td>$r_0$</td><td>1/e radius of the Gaussian heat source: $S\propto e^{-\rho^2/r_0^2}$</td><td>nm</td></tr>
+<tr><td>$\beta$</td><td>Inverse healing length in the supported region, $\beta=\sqrt{G/\kappa' t}$</td><td>m<sup>−1</sup></td></tr>
+<tr><td>$l$</td><td>Phonon mean free path (non-Fourier models)</td><td>nm</td></tr>
+<tr><td>$\rho(T),\ \alpha$</td><td>Electrical resistivity and its temperature coefficient (TCR) at $T_0$</td><td>µΩ cm, K<sup>−1</sup></td></tr>
+</tbody></table>
+
+<h2>3&nbsp;&nbsp;Heat transport: analytical solution</h2>
+<h3>3.1&nbsp;&nbsp;Governing equations</h3>
+<p>In steady state, with the temperature averaged over the thickness (as in [1, 2]), the heat equation in the two regions is</p>
+$$\kappa\,\nabla^2 T + S(\rho) - l^2\nabla^2 S(\rho) = 0, \qquad r<a \ \text{(suspended)} \tag{1}$$
+$$\kappa'\,\nabla^2 T - \frac{G}{t}\,(T-T_0) + S(\rho) = 0, \qquad r\ge a \ \text{(supported)} \tag{2}$$
+<p>with the volumetric Gaussian source of total power $Q$</p>
+$$S(\rho)=S_0\,e^{-\rho^2/r_0^2},\qquad S_0=\frac{Q}{\pi r_0^2\, t}. \tag{3}$$
+<p>Setting $l=0$ in Eq. (1) gives Fourier conduction, which is the model of [1]. A non-zero $l$ gives the steady Guyer–Krumhansl equation used in [2] (Section 3.4). Convective and radiative losses from the suspended part are neglected, as in both papers. The boundary conditions are:</p>
+<ul>
+  <li>$T\to T_0$ as $r\to\infty$;</li>
+  <li>$T$ is finite everywhere;</li>
+  <li>$T$ and the normal heat flux are continuous at the hole edge $r=a$.</li>
+</ul>
+
+<h3>3.2&nbsp;&nbsp;Source at the hole centre: closed form</h3>
+<p>When the source is at the hole centre the problem is radially symmetric. Its general solution is the one given in [1]:</p>
+$$T_1(r)=c_1+c_2\ln r+\frac{S_0 r_0^2}{4\kappa}\,\mathrm{Ei}\!\left(-\frac{r^2}{r_0^2}\right),\qquad T_2(r)=c_3 I_0(\beta r)+c_4K_0(\beta r)+T_0 . \tag{4}$$
+<p>The condition at infinity sets $c_3=0$. A finite temperature at $r=0$ fixes $c_2$, because the logarithm has to cancel the singularity of Ei. The solver writes the regular part through the entire exponential integral $\mathrm{Ein}(x)=\gamma+\ln x+E_1(x)$:</p>
+$$P_\mathrm{in}(\rho)=-\frac{S_0r_0^2}{4\kappa}\,\mathrm{Ein}\!\left(\frac{\rho^2}{r_0^2}\right),\qquad P'_\mathrm{in}(\rho)=-\frac{S_0r_0^2}{2\kappa\rho}\left(1-e^{-\rho^2/r_0^2}\right). \tag{5}$$
+<p>Eq. (5) is exactly the statement that the heat leaving a circle of radius ρ equals the power deposited inside it. The two remaining constants follow from continuity of $T$ and of $\kappa\,\partial_r T$ at $r=a$.</p>
+<p>For a small spot, $r_0\ll a$, the peak temperature rise takes a compact form that is useful for quick estimates:</p>
+$$\Delta T_\mathrm{peak}\simeq\frac{Q}{4\pi\kappa t}\left[\ln\frac{a^2}{r_0^2}+\gamma\right]+\frac{Q}{2\pi\kappa' t}\,\frac{K_0(\beta a)}{\beta a\,K_1(\beta a)} . \tag{6}$$
+<p>The first term is the temperature drop across the suspended membrane and is set by κ. The second is the rise of the hole edge above $T_0$, set by the supported region. Because the healing length $1/\beta$ is usually much shorter than $a$, the second term is small. This is why the extracted κ depends only weakly on G and κ′ (cf. Fig. 3c of [1] and Fig. 5a here).</p>
+
+<h3>3.3&nbsp;&nbsp;Arbitrary source position: exact angular-mode solution</h3>
+<p>Line scans, mis-aligned spots and sources on the supported region all break the radial symmetry. The solver uses the exact generalisation</p>
+$$T-T_0=\begin{cases}P_\mathrm{in}(\rho)+\displaystyle\sum_{n\ge0}\left(A_n^{c}\cos n\theta+A_n^{s}\sin n\theta\right)\left(\frac{r}{a}\right)^{n}, & r<a,\\[3mm] P_\mathrm{out}(\rho)+\displaystyle\sum_{n\ge0}\left(B_n^{c}\cos n\theta+B_n^{s}\sin n\theta\right)\frac{K_n(\beta r)}{K_n(\beta a)}, & r\ge a .\end{cases} \tag{7}$$
+<p>Here $P_\mathrm{in}$ and $P_\mathrm{out}$ are free-space particular solutions of Eqs. (1) and (2), centred on the source. The sums are the homogeneous solutions that stay regular at the origin and decay at infinity. Each particular solution satisfies its own equation everywhere in its own region, wherever the source is (inside, across, or outside the hole edge). The construction is therefore exact and only truncated in $n$.</p>
+<p>The exterior particular solution is a Hankel transform, with $b=\beta r_0$:</p>
+$$P_\mathrm{out}(\rho)=\frac{S_0r_0^2}{2\kappa'}\int_0^\infty\frac{u\,J_0(u\rho/r_0)\,e^{-u^2/4}}{u^2+b^2}\,du \;\xrightarrow{\ \rho\gg r_0\ }\; \frac{Q}{2\pi\kappa' t}\,e^{b^2/4}\,K_0(\beta\rho). \tag{8}$$
+<p>The asymptotic form comes from the pole at $u=ib$. The remainder decays like a Gaussian, so the far-field expression is used for $\rho>r_0\sqrt{b^2/4+46}$, where it is exact to about $10^{-20}$. Closer in, the integral is evaluated by Simpson quadrature on a table and interpolated with cubic Hermite polynomials.</p>
+<p>Both particular solutions are sampled on the circle $r=a$ and Fourier-decomposed in θ. This gives coefficients $p_n, p'_n$ (inside) and $q_n, q'_n$ (outside) for each harmonic and each parity (cosine or sine). Continuity of $T$ and of $\kappa\,\partial_rT$ then decouples into a 2×2 problem per harmonic, with the solution</p>
+$$A_n=\frac{\kappa' q'_n-\kappa p'_n+\kappa'\beta L_n\,(p_n-q_n)}{\kappa n/a-\kappa'\beta L_n},\qquad B_n=p_n-q_n+A_n,\qquad L_n=\frac{K'_n(\beta a)}{K_n(\beta a)}<0 . \tag{9}$$
+<p>The denominator is always positive, so the system is well conditioned for every $n$. The numerical details are:</p>
+<ul>
+  <li>Up to 160 harmonics are computed from $2N+2$ boundary samples, and harmonics whose coefficients fall below $10^{-10}$ of the leading term are dropped.</li>
+  <li>A centred source keeps only $n=0$ and reproduces Eq. (4) exactly.</li>
+  <li>Ratios of $K_n$ are evaluated in log space using the stable upward recurrence $K_{n+1}/K_n = K_{n-1}/K_n + 2n/x$, so large $n$ or large $\beta r$ cannot overflow.</li>
+</ul>
+
+<h3>3.4&nbsp;&nbsp;Non-Fourier transport: Guyer–Krumhansl (hydrodynamic) regime</h3>
+<p>Following [2], the steady hydrodynamic regime is described by the Guyer–Krumhansl constitutive law and energy conservation:</p>
+$$\mathbf q-l^2\nabla^2\mathbf q=-\kappa\nabla T,\qquad \nabla\!\cdot\mathbf q=S\quad\Longrightarrow\quad \kappa\nabla^2T+S-l^2\nabla^2S=0 . \tag{10}$$
+<p>The particular solution is the Fourier one plus a term localised under the heater:</p>
+$$T_\mathrm{GK}=T_\mathrm{F}+\frac{l^2}{\kappa}\,S(\rho),\qquad \Delta T_\mathrm{peak,GK}-\Delta T_\mathrm{peak,F}=\frac{l^2 S_0}{\kappa}. \tag{11}$$
+<p>With $\nabla^2\mathbf q\simeq\nabla(\nabla\!\cdot\mathbf q)=\nabla S$, the heat flux is $\mathbf q=-\kappa\nabla T_\mathrm F$. The extra term therefore carries no net heat across the hole edge, and the flux matching in Eq. (9) uses only the Fourier part. As $l$ grows, the hot spot dominates and the profile becomes strongly localised, which is the ballistic-like behaviour in Fig. 5 of [2] (Fig. 4 here). The description holds while $l\lesssim a$; beyond that the GUI shows a warning.</p>
+
+<h3>3.5&nbsp;&nbsp;Ballistic–diffusive suppression (optional)</h3>
+<p>The second non-Fourier option keeps the Fourier form but reduces the conductivity of the suspended region for boundary scattering. It uses an equation-of-phonon-radiative-transfer (EPRT) type interpolation, with the hole diameter as the characteristic length:</p>
+$$\kappa_\mathrm{eff}=\frac{\kappa}{1+\tfrac43\,\mathrm{Kn}},\qquad \mathrm{Kn}=\frac{l}{2a}. \tag{12}$$
+<p>The fit then returns the intrinsic, bulk-like κ.</p>
+
+<h2>4&nbsp;&nbsp;Heat delivery: optical and mechanical</h2>
+<h3>4.1&nbsp;&nbsp;Optical (laser) heating — OBT [1]</h3>
+<p>The absorbed power is $Q=A\,P$, with $A$ the absorbance of the flake at the laser wavelength (measure it for each flake: it depends on thickness [1]) and $P$ the incident power. The spot size can be entered as the 1/e radius $r_0$, the 1/e² radius $w=\sqrt2\,r_0$, or the full width at half maximum, $\mathrm{FWHM}=2r_0\sqrt{\ln 2}$. Light reflected from the bottom of the hole is ignored, as in [1].</p>
+<h3>4.2&nbsp;&nbsp;Mechanical (AFM-tip) heating — MBT [2]</h3>
+<p>The tip is modelled as a Gaussian source with an effective thermal radius $r_0\approx 20$ nm. Because the field is linear in $Q$, the solver first computes the peak rise per watt, $\theta=\Delta T_\mathrm{peak}/Q$, and then sets $Q$ in one of three ways:</p>
+<table class="nice">
+<thead><tr><th>Mode</th><th>Delivered power</th><th>Use</th></tr></thead>
+<tbody>
+<tr><td>Constant power</td><td>$Q$ given</td><td>The constant-power comparisons of [2], Fig. 3</td></tr>
+<tr><td>Contact temperature</td><td>$Q=\delta T^{*}/\theta$, with $\delta T^{*}=T^{*}_\mathrm{AFM}-T_\mathrm{amb}$</td><td>[2], SI §4: the peak of the profile is pinned to the tip temperature</td></tr>
+<tr><td>Tip–sample conductance</td><td>$Q=\dfrac{G_\mathrm{TS}\,(T_\mathrm{tip}-T_0)}{1+G_\mathrm{TS}\,\theta}$</td><td>SThM tip with calibrated $G_\mathrm{TS}$ ([2], SI §2)</td></tr>
+</tbody></table>
+<p>A negative $\delta T^{*}$ or $Q$, or $T_\mathrm{tip}<T_0$, models a cold tip that extracts heat.</p>
+
+<h2>5&nbsp;&nbsp;Temperature-dependent resistivity</h2>
+<p>Every model is expressed as a fractional change $\delta\rho/\rho_0 = \rho(T)/\rho(T_0)-1$, applied point by point with $T=T_0+\Delta T(x,y)$:</p>
+<ul>
+  <li><b>TCR (metals):</b> $\rho=\rho_0[1+\alpha(T-T_0)]$, with α given at the measurement temperature. For 2H-TaS<sub>2</sub>, $\rho_0=0.4$ mΩ cm and $\alpha=0.0025$ K<sup>−1</sup> [1].</li>
+  <li><b>Thermally activated (semiconductors):</b> $\rho=\rho_0\exp[(E_A/k_B)(1/T-1/T_0)]$.</li>
+  <li><b>Measured R–T data:</b> $\rho(T)/\rho(T_0)=R(T)/R(T_0)$. The data are interpolated with a monotone piecewise-cubic (PCHIP) curve, so the full nonlinearity is kept, including the plateaus and inflection points discussed in [2], SI §5. If the data are two-terminal, the solver can subtract $R_c(\mathrm{I}+)+R_c(\mathrm{I}-)$, assuming the contact resistance does not depend on temperature.</li>
+</ul>
+<p>The scale $\rho_0$ comes from one of three sources: an entered resistivity, a measured sample resistance divided by the geometric factor of the drawn device (Section 6), or $R(T_0)$ taken from the R–T data.</p>
+
+<h2>6&nbsp;&nbsp;From temperature field to δR</h2>
+<h3>6.1&nbsp;&nbsp;Reciprocity formula</h3>
+<p>The temperature field is analytical, but a drawn crystal with its contacts is not. In [1] the heated resistance was computed with a finite-element package. The solver instead uses an exact first-order result.</p>
+<p>Let $\mathbf J$ be the cold current density when current $I$ is injected through I+/I−. Let $\mathbf J'$ be the current density when current $I'$ is injected through the voltage probes V+/V−; for a two-terminal measurement $\mathbf J'=\mathbf J$. Then</p>
+$$\delta R=\frac{1}{I\,I'}\int_V\delta\rho(x,y)\;\mathbf J\cdot\mathbf J'\,dV+O(\delta\rho^2). \tag{13}$$
+<p>For two terminals this is the statement that the extra Joule power is $I^2\delta R=\int\delta\rho\,J^2\,dV$. For four terminals it follows from Onsager–Lorentz reciprocity. At the ppm level of bolometric signals the second-order term is negligible. In particular, Eq. (13) automatically accounts for current crowding near the contacts and for the shape of the flake.</p>
+<h3>6.2&nbsp;&nbsp;Discretisation</h3>
+<p>The flake is rasterised on a square grid; by default the long side has 160 cells. Cells under I+/I− are equipotential (Dirichlet) regions. All other pads, the V± probes included, are floating regions with $10^5$ times the flake conductivity, because metal under a flake shorts it. The Laplace equation $\nabla\cdot(\sigma\nabla V)=0$ for unit sheet conductance is solved with Jacobi-preconditioned conjugate gradients to a relative residual of $10^{-11}$.</p>
+<p>Each face between cells carries the harmonic-mean conductance $g_f=2\sigma_a\sigma_b/(\sigma_a+\sigma_b)$. The exact discrete counterpart of Eq. (13) is</p>
+$$\delta R=-\frac{1}{I I'}\sum_{\text{faces}}\delta g_f\,\Delta V_f\,\Delta V'_f\quad\Longrightarrow\quad \delta R=\frac{\rho_0}{t}\sum_{\text{cells }c} w_c\,\Big\langle\frac{\delta\rho}{\rho_0}\Big\rangle_c ,\qquad R=\frac{\rho_0}{t}\sum_c w_c , \tag{14}$$
+<p>where $w_c$ collects the sensitivities $\partial g_f/\partial\sigma_c$ of the faces around cell $c$. The identity $\sum_c w_c=R/(\rho_0/t)$ holds to machine precision (Section 11) and is a strong check on the implementation.</p>
+<p>The weights depend only on the geometry, so they are computed once and cached. Every κ, power or source position after that needs only the analytical temperature field.</p>
+<h3>6.3&nbsp;&nbsp;Sub-cell integration</h3>
+<p>The cell average $\langle\delta\rho/\rho_0\rangle_c$ is computed by sampling the analytical field on an $m\times m$ sub-grid:</p>
+<ul>
+  <li>$m=\lceil 3\,\Delta x/r_0\rceil$ (between 3 and 48) within $6r_0+\Delta x$ of the source, which resolves even a 20 nm tip on a 50–100 nm grid;</li>
+  <li>$m=4$ for cells cut by the hole edge;</li>
+  <li>$m=1$–2 elsewhere.</li>
+</ul>
+<p>Supported cells where both $\beta(r-a)$ and $\beta\rho$ exceed 45 are skipped, because their temperature rise is below about $10^{-19}$ of the peak.</p>
+
+<h2>7&nbsp;&nbsp;Read-out, contact resistance and noise</h2>
+<p>The bias configuration follows from the contact roles and the chosen bias mode:</p>
+<table class="nice">
+<thead><tr><th>Configuration</th><th>Measured signal</th><th>Effect of $R_c$</th></tr></thead>
+<tbody>
+<tr><td>Two-terminal, constant voltage $V_B$</td><td>$I_\mathrm{bolo}=\dfrac{V_B}{R_\mathrm{tot}+\delta R}-\dfrac{V_B}{R_\mathrm{tot}}\approx-\dfrac{V_B\,\delta R}{R_\mathrm{tot}^2}$</td><td>Signal reduced by $(R_s/R_\mathrm{tot})^2$; $V_\mathrm{eff}=V_B R_s/R_\mathrm{tot}$</td></tr>
+<tr><td>Two-terminal, constant current $I$</td><td>$V_\mathrm{bolo}=I\,\delta R$</td><td>None</td></tr>
+<tr><td>Four-terminal, constant current $I$</td><td>$V_\mathrm{bolo}=I\,\delta R_\mathrm{4p}$</td><td>None</td></tr>
+</tbody></table>
+<p>Here $R_\mathrm{tot}=R_s+R_c(\mathrm I+)+R_c(\mathrm I-)$. These are the relations of [2], SI §1. A measured photocurrent is converted with the exact inverse $\delta R_M=V_B/(I_0+I_\mathrm{PC})-V_B/I_0$, whose linearisation is $\delta R_M\simeq-R^2I_\mathrm{PC}/V_B$, the expression used in [1].</p>
+<p>The intrinsic noise floor uses the Johnson and shot noise of [2] over the lock-in equivalent noise bandwidth $\Delta f$:</p>
+$$v_J=\sqrt{4k_BT R\,\Delta f},\qquad i_\mathrm{shot}=\sqrt{2qI\,\Delta f},\qquad \delta R_\mathrm{min}=\begin{cases}R_\mathrm{tot}^2\,i_n/V_B & \text{(constant voltage)}\\ v_n/I & \text{(constant current)}\end{cases} \tag{15}$$
+<p>The solver reports the signal-to-noise ratio. The 1/f noise is neglected because measurements run at kHz modulation frequencies [2].</p>
+
+<h2>8&nbsp;&nbsp;Extracting κ</h2>
+<p>The measured value can be entered as δR<sub>M</sub>, as a bolometric current (constant voltage), or as a bolometric voltage (constant current). The κ extraction then proceeds in three steps:</p>
+<ol>
+  <li>The forward model $\delta R(\kappa)$ is evaluated on 33 log-spaced points between 0.01 and $10^4$ W m<sup>−1</sup> K<sup>−1</sup>. If κ′ is tied to κ, κ′ follows it at every point.</li>
+  <li>Every sign change of $\delta R(\kappa)-\delta R_M$ is refined by bisection in $\ln\kappa$, to a relative precision of $10^{-7}$.</li>
+  <li>The uncertainty $\pm\sigma$ on the measurement is propagated by solving again at $\delta R_M\pm\sigma$, giving a κ interval.</li>
+</ol>
+<p>Under constant power δR falls monotonically with κ, so the root is unique. If the response is not monotonic, for example near an inflection point in ρ(T) [2] or with tip heating at a pinned contact temperature, every root is listed. The same machinery gives δR against κ, a line scan of δR against source position (as in an SPCM line trace, [1] Fig. 1g), and δR against mean free path.</p>
+
+<h2>9&nbsp;&nbsp;Solver workflow and user interface</h2>
+{{FIG:flow}}
+<p>The program runs entirely in the browser: open <code>index.html</code>; there is nothing to install. The physics modules can also be loaded in Node.js, which is how the tests run (<code>npm test</code>). The source is organised as follows:</p>
+<table class="nice code">
+<thead><tr><th>Module</th><th>Content</th></tr></thead>
+<tbody>
+<tr><td><code>js/math/special.js</code></td><td>$E_1$, Ein, Bessel $J_{0,1}$, $I_{0,1}$, $K_{0,1}$ (scaled), log-space $K_n$ tables, Simpson quadrature</td></tr>
+<tr><td><code>js/physics/thermal.js</code></td><td>Eqs. (1)–(12): particular solutions, angular-mode matching, GK and ballistic models</td></tr>
+<tr><td><code>js/physics/electrical.js</code></td><td>Rasterisation, CG solver, reciprocity weights of Eq. (14), two- and four-terminal</td></tr>
+<tr><td><code>js/physics/resistivity.js</code></td><td>TCR, activation and R–T (PCHIP) models; R–T parser</td></tr>
+<tr><td><code>js/physics/bolometer.js</code></td><td>Heat delivery, δR integration, signals and noise, κ fit, sweeps, line scans</td></tr>
+<tr><td><code>js/ui/editor.js</code>, <code>js/app.js</code></td><td>Drawing editor, parameter forms, overlays, plots, save/load</td></tr>
+</tbody></table>
+{{FIG:gui}}
+<p>To prepare a calculation in the GUI:</p>
+<ol>
+  <li>Draw the crystal boundary (polygon or rectangle), the contact pads, the substrate hole, and the heat-source position. Optionally draw a scan line. Shapes can be dragged and reshaped, and coordinates can be typed in.</li>
+  <li>Assign a role and an $R_c$ to each contact.</li>
+  <li>Enter the material, choose the transport model, the heat-delivery method and the ρ(T) description, and set the bias and noise bandwidth.</li>
+</ol>
+<p>Results update automatically. The canvas can overlay the temperature rise, the current density, or the bolometric sensitivity $w_c$, which shows where heating changes the resistance most. Projects are saved and loaded as JSON.</p>
+
+<h2>10&nbsp;&nbsp;Worked example</h2>
+<p>The built-in example is a 2H-TaS<sub>2</sub>-like flake: $t=32$ nm, $\kappa=\kappa'=13.2$ W m<sup>−1</sup> K<sup>−1</sup>, $G=5\times10^{7}$ W m<sup>−2</sup> K<sup>−1</sup>, $\rho_0=400$ µΩ cm and $\alpha=0.0025$ K<sup>−1</sup>, at $T_0=295$ K [1]. The flake is suspended over a hole with $a=1$ µm between two pads with $R_c=20$ Ω each, and biased at 50 mV. Optical heating uses $P=10$ µW, $A=0.3$ and $r_0=300$ nm; mechanical heating uses $\delta T^{*}=1$ K and $r_0=20$ nm. The solver returns:</p>
+{{TABLE:example}}
+<p>For comparison, Eq. (6) gives $\Delta T_\mathrm{peak}=1.69+0.10=1.79$ K for the optical case, in agreement with the full solution. Figures 4–6 show the temperature profiles, the sensitivity of δR to κ and G, and a line scan.</p>
+{{FIG:profiles}}
+{{FIG:kappa}}
+{{FIG:scan}}
+
+<h2>11&nbsp;&nbsp;Validation</h2>
+<p>The automated test suite (<code>tests/physics.test.js</code>, run with <code>npm test</code>) checks every layer of the solver against an independent reference:</p>
+{{TABLE:validation}}
+
+<h2>12&nbsp;&nbsp;Assumptions and limitations</h2>
+<ul>
+<li><b>Steady state.</b> The chopper or tapping frequency must be well below the inverse thermal time of the suspended region. The phase lag of the lock-in signal is not modelled.</li>
+<li><b>Constant properties.</b> κ, κ′, G and the GK mean free path are independent of temperature within the thermal problem. This is appropriate for the small temperature rises (≪ 1 K up to a few K) the method is designed for. The resistivity response, by contrast, can be fully nonlinear through R–T data. The GUI warns when ΔT exceeds min(20 K, 0.1 T<sub>0</sub>).</li>
+<li><b>Heat sinking.</b> The supported flake is treated as laterally infinite on the substrate, so the flake edges and the metal pads are not separate heat sinks. This is accurate when the healing length $\sqrt{\kappa' t/G}$ is short compared with the distance from the hole to the flake edge, the regime argued in [1].</li>
+<li><b>Signal content.</b> Only the bolometric effect is modelled. Seebeck or photothermoelectric currents at the contacts, photoconductivity in semiconductors, heating by light reflected from the bottom of the hole, and DC Joule self-heating are not included. The GUI flags the cases where these may matter; see the discussion in [1].</li>
+<li><b>Non-Fourier models.</b> GK follows [2] and applies only in the suspended region; the supported region stays Fourier. The ballistic option is a phenomenological suppression of κ. Neither model resolves the full Boltzmann transport in the crossover between diffusive and ballistic regimes, where [2] also notes reduced sensitivity to $l$.</li>
+<li><b>Material presets.</b> Only the 2H-TaS<sub>2</sub> values and the V<sub>2</sub>O<sub>3</sub> κ come from [1]. All other preset values are starting guesses and must be replaced with measured values.</li>
+</ul>
+
+<h2>References</h2>
+<ol class="refs">
+<li>O. Çakıroğlu, N. Mehmood, M. M. Çiçek, A. Aikebaier, H. R. Rasouli, E. Durgun, T. S. Kasırga, “Thermal conductivity measurements in nanosheets via bolometric effect”, <i>2D Materials</i> <b>7</b>, 035003 (2020); arXiv:2001.00368.</li>
+<li>T. S. Kasırga, B. Köker, “An extensive thermal conductivity measurement method based on atomic force microscopy”, <i>International Journal of Heat and Mass Transfer</i> (2025); arXiv:2501.18384.</li>
+<li>R. A. Guyer, J. A. Krumhansl, “Solution of the linearized phonon Boltzmann equation”, <i>Phys. Rev.</i> <b>148</b>, 766 (1966).</li>
+<li>N. Mehmood, H. R. Rasouli, O. Çakıroğlu, T. S. Kasırga, “Photocurrent generation in a metallic transition-metal dichalcogenide”, <i>Phys. Rev. B</i> <b>97</b>, 195412 (2018).</li>
+<li>F. Menges, H. Riel, A. Stemmer, B. Gotsmann, “Quantitative thermometry of nanoscale hot spots”, <i>Nano Lett.</i> <b>12</b>, 596 (2012).</li>
+</ol>
